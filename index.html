@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PhoHienNextGen</title>
+
+    <!-- Leaflet CSS -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <!-- BANNER YÊU CẦU QUYỀN GPS KHI VỪA VÀO WEB -->
+    <div id="gpsPermissionBanner" class="gps-permission-overlay">
+      <div class="gps-permission-card">
+        <div class="gps-icon-animated">📡</div>
+        <h3>Cấp quyền vị trí (GPS)</h3>
+        <p
+          >Để nhận mộc tự động khi tới địa điểm và xem khoảng cách nhiệm vụ, ứng
+          dụng cần sử dụng vị trí của bạn.</p
+        >
+        <button class="btn-grant-gps" onclick="requestGPSPermissionDirectly()"
+          >Bật GPS & Bắt đầu</button
+        >
+      </div>
+    </div>
+
+    <div class="app-container">
+      <!-- THÔNG BÁO TOAST CÓ THANH ĐẾM NGƯỢC (TOP SLIDE) -->
+      <div id="toastNotification" class="toast-container hidden">
+        <div class="toast-content">
+          <span class="toast-icon">🎉</span>
+          <span id="toastMessage">Bạn đã hoàn thành nhiệm vụ!</span>
+        </div>
+        <div class="toast-progress-bar"></div>
+      </div>
+
+      <!-- NÚT BẮT ĐẦU HÀNH TRÌNH STICKY TOP (CHỈ HIỆN Ở TAB 1) -->
+      <div id="stickyStartContainer" class="sticky-start-bar hidden">
+        <button class="btn-start-itinerary" onclick="confirmAndStartItinerary()"
+          >🚀 Bắt đầu hành trình</button
+        >
+      </div>
+
+      <!-- MỤC 1: BẢN ĐỒ & CHỌN LỊCH TRÌNH -->
+      <section id="tab1" class="tab-content active">
+        <header class="header">
+          <div class="brand">
+            <img
+              id="projectLogo"
+              src="images/logo.png"
+              alt="Logo"
+              class="logo-img"
+              onerror="
+                this.style.display = 'none';
+                this.nextElementSibling.style.display = 'flex';
+              "
+            />
+
+            <div>
+              <h1>Phố Hiến</h1>
+              <p>HÀNH TRÌNH TÂM LINH</p>
+            </div>
+          </div>
+          <!-- NÚT GIỚI THIỆU GÓC TRÊN BÊN PHẢI -->
+          <button
+            class="btn-info-circle"
+            onclick="toggleInfoModal()"
+            title="Hướng dẫn & Giới thiệu"
+            >ℹ️</button
+          >
+        </header>
+
+        <div id="map"></div>
+
+        <div class="quick-nav">
+          <p class="select-instruction"
+            >📌 Chọn lịch trình của bạn (Chạm để chọn thứ tự tham quan):</p
+          >
+          <div class="location-buttons" id="locationButtonsContainer"></div>
+        </div>
+
+        <div class="section-title">ĐỊA DANH NỔI BẬT</div>
+        <div class="poi-cards" id="poiCardContainer"></div>
+      </section>
+
+      <!-- MỤC 2: HÀNH TRÌNH -->
+      <section id="tabItinerary" class="tab-content">
+        <header class="header-simple">
+          <h2>Lịch Trình Tham Quan</h2>
+        </header>
+
+        <div id="itineraryDetailContainer"></div>
+      </section>
+
+      <!-- MỤC 3: CÁ NHÂN & KHUNG MỘC TRONG SUỐT -->
+      <section id="tab3" class="tab-content">
+        <header class="header-simple">
+          <h2>Tạo Khung Ảnh Sưu Tầm</h2>
+        </header>
+
+        <div class="card canvas-card">
+          <h3>Khung Dấu Mộc PhoHienNextGen</h3>
+          <p class="sub-text"
+            >Mộc tự động mở khóa khi bạn tới địa điểm. Chọn tối đa 5 mộc để xếp
+            lên khung PNG:</p
+          >
+
+          <div class="canvas-container">
+            <canvas id="photoFrameCanvas" width="500" height="650"></canvas>
+          </div>
+
+          <button class="btn-save" onclick="downloadExportImage()"
+            >💾 Tải Khung Trong Suốt (PNG)</button
+          >
+        </div>
+
+        <div class="card storage-card">
+          <h3>Kho Lưu Trữ Dấu Mộc</h3>
+          <div id="stampsInventory" class="stamps-grid"></div>
+        </div>
+      </section>
+
+      <!-- BONG BÓNG NỔI NHIỆM VỤ (FLOATING WIDGET) -->
+      <div
+        id="questBubble"
+        class="quest-bubble hidden"
+        onclick="toggleQuestModal()"
+      >
+        <span class="bubble-icon">🎯</span>
+        <span class="bubble-badge" id="questBadgeCount">0</span>
+      </div>
+
+      <!-- MODAL HIỆN LIST NHIỆM VỤ THEO THỨ TỰ -->
+      <div
+        id="questModal"
+        class="modal-overlay hidden"
+        onclick="handleModalOverlayClick(event)"
+      >
+        <div class="modal-card">
+          <div class="modal-header">
+            <h3>📋 Danh Sách Nhiệm Vụ</h3>
+            <button class="btn-close" onclick="toggleQuestModal()">✕</button>
+          </div>
+          <div id="gpsStatusHeader" class="gps-status-bar"
+            >📡 Đang quét GPS...</div
+          >
+          <div id="questListContainer" class="quest-list"></div>
+        </div>
+      </div>
+
+      <!-- MODAL GIỚI THIỆU & HƯỚNG DẪN SỬ DỤNG -->
+      <div
+        id="infoModal"
+        class="modal-overlay hidden"
+        onclick="handleInfoOverlayClick(event)"
+      >
+        <div class="modal-card info-modal-card">
+          <div class="modal-header">
+            <h3>ℹ️ Giới Thiệu & Hướng Dẫn</h3>
+            <button class="btn-close" onclick="toggleInfoModal()">✕</button>
+          </div>
+          <div class="info-modal-body">
+            <p class="info-subtitle"
+              >🏮 <b>PhoHienNextGen - Hành Trình Tâm Linh</b></p
+            >
+            <p
+              >Ứng dụng hỗ trợ du khách khám phá di tích lịch sử Phố Hiến thông
+              qua trải nghiệm tương tác GPS tự động thu thập dấu mộc kỉ niệm.</p
+            >
+
+            <hr class="info-divider" />
+
+            <h4>📌 Hướng dẫn sử dụng:</h4>
+            <ol class="info-steps">
+              <li><b>Bước 1:</b> Cấp quyền GPS vị trí khi vào ứng dụng.</li>
+              <li
+                ><b>Bước 2:</b> Bấm chọn các địa điểm trên bản đồ theo thứ tự
+                muốn ghé thăm và nhấn <b>"🚀 Bắt đầu hành trình"</b>.</li
+              >
+              <li
+                ><b>Bước 3:</b> Bong bóng nhiệm vụ 🎯 sẽ xuất hiện. Di chuyển
+                tới bán kính ≤ 100m quanh di tích, dấu mộc sẽ
+                <b>tự động lưu</b>.</li
+              >
+              <li
+                ><b>Bước 4:</b> Sang tab <b>Cá nhân</b> để ghép các mộc đã sưu
+                tầm vào khung ảnh PNG kỉ niệm.</li
+              >
+            </ol>
+          </div>
+        </div>
+      </div>
+
+      <!-- BOTTOM NAVIGATION (3 MỤC CHÍNH) -->
+      <nav class="bottom-nav">
+        <button class="nav-item active" onclick="switchTab('tab1', this)">
+          <span class="nav-icon">🏠</span>
+          <span class="nav-label">Bản đồ</span>
+        </button>
+        <button class="nav-item" onclick="switchTab('tabItinerary', this)">
+          <span class="nav-icon">🗺️</span>
+          <span class="nav-label">Hành trình</span>
+        </button>
+        <button class="nav-item" onclick="switchTab('tab3', this)">
+          <span class="nav-icon">👤</span>
+          <span class="nav-label">Cá nhân</span>
+        </button>
+      </nav>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="js/main.js"></script>
+  </body>
+</html>
