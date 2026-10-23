@@ -10,7 +10,14 @@ const ASSETS = {
   },
 };
 
-// 3 Địa danh chính
+const EARTH_RADIUS_M = 6371008.8; // bán kính trung bình IUGG
+const GEOFENCE_RADIUS_M = 100; // vùng nhận mộc
+const MAX_ACCEPTABLE_ACCURACY_M = 150; // sai số GPS lớn hơn thì bỏ qua
+const MAX_ACCURACY_BONUS_M = 50; // dung sai tối đa cộng thêm theo sai số GPS
+const FIX_MAX_AGE_MS = 30000; // fix GPS cũ hơn 30s không tính giờ ở lại
+const STAY_REQUIRED_SECONDS = 1800;
+
+// Thông tin tham khảo: nên đối chiếu lại với nguồn chính thức trước khi phát hành
 const LOCATIONS = [
   {
     id: "denmau",
@@ -18,6 +25,20 @@ const LOCATIONS = [
     desc: "Nơi thờ Dương Quý Phi, kiến trúc cổ kính soi bóng bên hồ bán nguyệt.",
     detail:
       "Đền Mẫu Hưng Yên nổi tiếng linh thiêng, nằm trong quần thể di tích Phố Hiến lâu đời.",
+    address: "Khu di tích Phố Hiến, TP. Hưng Yên",
+    hours: "Khoảng 6:00 – 18:00 hằng ngày",
+    ticket: "Miễn phí",
+    duration: "45 – 60 phút",
+    bestTime: "Sáng sớm hoặc chiều muộn, ngày rằm và mùng 1 đông người hơn",
+    highlights: [
+      "Hồ bán nguyệt phía trước đền",
+      "Kiến trúc đền cổ trong quần thể Phố Hiến",
+      "Không gian tín ngưỡng thờ Mẫu",
+    ],
+    tips: [
+      "Ăn mặc kín đáo, lịch sự khi vào khu thờ tự",
+      "Giữ yên lặng trong khu thờ chính",
+    ],
     lat: 20.644433786625353,
     lng: 106.05440926370912,
     stamps: [
@@ -41,6 +62,20 @@ const LOCATIONS = [
     desc: '"Phố Hiến đệ nhất danh thắng" – cổng tam quan rêu phong cổ kính.',
     detail:
       "Chùa Chuông lưu giữ nhiều hiện vật giá trị như quả chuông đúc năm 1707 và hàng trăm pho tượng.",
+    address: "Chùa Chuông (Kim Chung Tự), TP. Hưng Yên",
+    hours: "Khoảng 6:00 – 18:00 hằng ngày",
+    ticket: "Miễn phí",
+    duration: "45 – 60 phút",
+    bestTime: "Buổi sáng, ánh sáng đẹp để chụp cổng tam quan",
+    highlights: [
+      "Cổng tam quan rêu phong cổ kính",
+      "Quả chuông đúc năm 1707",
+      "Hàng trăm pho tượng cổ",
+    ],
+    tips: [
+      "Tháo mũ, nón khi vào chánh điện",
+      "Hỏi trước khi chụp ảnh trong khu tượng thờ",
+    ],
     lat: 20.655011955225113,
     lng: 106.05026360111725,
     stamps: [
@@ -64,6 +99,20 @@ const LOCATIONS = [
     desc: "Biểu tượng văn hiến lâu đời của đất học Hưng Yên.",
     detail:
       "Văn Miếu Xích Đằng là nơi tôn vinh Khổng Tử và các bậc hiền triết tri thức thời xưa.",
+    address: "Xích Đằng, TP. Hưng Yên",
+    hours: "Khoảng 7:00 – 17:00 hằng ngày",
+    ticket: "Miễn phí",
+    duration: "40 – 60 phút",
+    bestTime: "Sáng các ngày trong tuần, ít khách và yên tĩnh",
+    highlights: [
+      "Nơi thờ Khổng Tử và các bậc hiền triết",
+      "Không gian cổ kính đậm tinh thần hiếu học",
+      "Sân vườn rộng, thích hợp chụp ảnh",
+    ],
+    tips: [
+      "Nên đi cuối hành trình vì địa điểm xa nhất so với Đền Mẫu",
+      "Mang nước uống nếu đi buổi trưa",
+    ],
     lat: 20.6623247752404,
     lng: 106.04916656478785,
     stamps: [
@@ -87,19 +136,46 @@ let map = null;
 let selectedSchedule = [];
 let currentItineraryIndex = 0;
 
-// Trạng thái GPS, đếm thời gian & Mộc
-let userLocation = null;
-let unlockedStamps = JSON.parse(localStorage.getItem("phoHienStamps")) || []; // Chứa danh sách stamp id (dm1, dm2, ...)
-let stayTimers = {}; // Lưu thời gian ở lại (tính bằng giây) cho từng địa danh
-let loadedStampImages = {}; // Preload các ảnh mộc
+let userLocation = null; // { lat, lng, accuracy, time }
+let unlockedStamps = safeParse("phoHienStamps", []);
+let stayTimers = safeParse("phoHienStayTimers", {});
+let lastTickAt = Date.now();
+let loadedStampImages = {};
 
-// Quản lý mộc được đặt trên Canvas (kéo thả tự do)
-let placedStamps = []; // Cấu trúc: { id, stampId, img, x, y, size: 70 }
+let placedStamps = [];
 let draggingStamp = null;
 let dragOffsetX = 0;
 let dragOffsetY = 0;
 
+function safeParse(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch (err) {
+    return fallback;
+  }
+}
+
+function injectInfoStyles() {
+  if (document.getElementById("phoHienInfoStyles")) return;
+  const style = document.createElement("style");
+  style.id = "phoHienInfoStyles";
+  style.textContent = `
+    .info-grid { margin-top: 14px; border: 1px solid #eadfd3; border-radius: 12px; overflow: hidden; background: #fffaf5; }
+    .info-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 9px 12px; border-bottom: 1px solid #f0e6da; font-size: 0.85rem; }
+    .info-row:last-child { border-bottom: none; }
+    .info-label { flex: 0 0 auto; font-weight: 700; color: #8b2323; white-space: nowrap; }
+    .info-value { flex: 1 1 auto; text-align: right; color: #3a2d22; line-height: 1.4; }
+    .info-section { margin-top: 14px; }
+    .info-section h4 { font-size: 0.95rem; color: #2c1d11; margin: 0 0 6px; }
+    .info-section ul { margin: 0; padding-left: 20px; list-style: disc; font-size: 0.85rem; line-height: 1.55; color: #444; }
+    .info-section ul.stamp-status-list { list-style: none; padding-left: 0; }
+  `;
+  document.head.appendChild(style);
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+  injectInfoStyles();
   preloadStampImages();
   initMap();
   renderLocationButtons();
@@ -108,7 +184,6 @@ document.addEventListener("DOMContentLoaded", () => {
   initCanvasInteraction();
   drawCanvas();
 
-  // Kiểm tra quyền GPS nếu đã cấp trước đó
   if (navigator.permissions && navigator.permissions.query) {
     navigator.permissions.query({ name: "geolocation" }).then((result) => {
       if (result.state === "granted") {
@@ -119,7 +194,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Tự động đếm thời gian ở lại mỗi giây
+  lastTickAt = Date.now();
   setInterval(processStayTimers, 1000);
 });
 
@@ -134,8 +209,17 @@ function preloadStampImages() {
 }
 
 // =========================================================================
-// PHẦN 2: XỬ LÝ GPS & TỰ ĐỘNG ĐẮM/LƯU MỘC & ĐẾM NGHỈ 30 PHÚT
+// PHẦN 2: GPS, KHOẢNG CÁCH & NHẬN MỘC
 // =========================================================================
+
+function setUserLocation(pos) {
+  userLocation = {
+    lat: pos.coords.latitude,
+    lng: pos.coords.longitude,
+    accuracy: pos.coords.accuracy || 0,
+    time: Date.now(),
+  };
+}
 
 function requestGPSPermissionDirectly() {
   if (!navigator.geolocation) {
@@ -146,7 +230,7 @@ function requestGPSPermissionDirectly() {
 
   navigator.geolocation.getCurrentPosition(
     (pos) => {
-      userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      setUserLocation(pos);
       document.getElementById("gpsPermissionBanner").classList.add("hidden");
       showToastNotification("🟢 Đã bật vị trí GPS thành công!");
       startWatchingGPS();
@@ -162,23 +246,63 @@ function requestGPSPermissionDirectly() {
   );
 }
 
+let gpsWatchId = null;
 function startWatchingGPS() {
-  navigator.geolocation.watchPosition(
+  if (gpsWatchId !== null) return;
+  gpsWatchId = navigator.geolocation.watchPosition(
     (pos) => {
-      userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-      updateGPSStatus("📡 GPS: Đã kết nối vị trí thực");
+      setUserLocation(pos);
+      updateGPSStatus(
+        `📡 GPS: Đã kết nối (sai số ±${Math.round(userLocation.accuracy)}m)`,
+      );
       checkAutomaticQuests();
+      updateLiveDistance();
     },
-    () => {
-      updateGPSStatus("⚠️ Mất tín hiệu GPS.");
-    },
-    { enableHighAccuracy: true },
+    () => updateGPSStatus("⚠️ Mất tín hiệu GPS."),
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 },
   );
 }
 
 function updateGPSStatus(msg) {
   const statusElem = document.getElementById("gpsStatusHeader");
   if (statusElem) statusElem.innerText = msg;
+}
+
+// Khoảng cách haversine (mét)
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const c =
+    2 * Math.atan2(Math.sqrt(Math.min(1, a)), Math.sqrt(Math.max(0, 1 - a)));
+  return EARTH_RADIUS_M * c;
+}
+
+function formatDistance(meters) {
+  if (meters < 1000) return `${Math.round(meters)} m`;
+  return `${(meters / 1000).toFixed(1)} km`;
+}
+
+function distanceToLocation(loc) {
+  if (!userLocation) return null;
+  return calculateDistance(
+    userLocation.lat,
+    userLocation.lng,
+    loc.lat,
+    loc.lng,
+  );
+}
+
+// Có đang trong vùng nhận mộc không, có tính dung sai theo sai số GPS
+function isInsideGeofence(loc) {
+  if (!userLocation) return false;
+  if (userLocation.accuracy > MAX_ACCEPTABLE_ACCURACY_M) return false;
+  const dist = distanceToLocation(loc);
+  const bonus = Math.min(userLocation.accuracy, MAX_ACCURACY_BONUS_M);
+  return dist - bonus <= GEOFENCE_RADIUS_M;
 }
 
 function checkAutomaticQuests() {
@@ -188,16 +312,8 @@ function checkAutomaticQuests() {
     const loc = LOCATIONS.find((l) => l.id === locId);
     if (!loc) return;
 
-    const dist = calculateDistance(
-      userLocation.lat,
-      userLocation.lng,
-      loc.lat,
-      loc.lng,
-    );
-
-    // Nhiệm vụ 1: Đặt chân đến địa danh (Khoảng cách <= 100m)
     const checkinStamp = loc.stamps.find((s) => s.type === "checkin");
-    if (dist <= 100 && !unlockedStamps.includes(checkinStamp.id)) {
+    if (isInsideGeofence(loc) && !unlockedStamps.includes(checkinStamp.id)) {
       unlockStamp(
         checkinStamp.id,
         `🎉 Bạn đã tới ${loc.name}! Đã nhận ${checkinStamp.name}.`,
@@ -208,30 +324,28 @@ function checkAutomaticQuests() {
   renderQuestList();
 }
 
-// Xử lý đếm ngược 30 phút (1800 giây)
+// Đếm giờ theo thời gian thực (Date.now), không phụ thuộc nhịp setInterval
 function processStayTimers() {
-  if (!userLocation || selectedSchedule.length === 0) return;
+  const now = Date.now();
+  const elapsedSeconds = (now - lastTickAt) / 1000;
+  lastTickAt = now;
 
+  if (!userLocation || selectedSchedule.length === 0) return;
+  if (now - userLocation.time > FIX_MAX_AGE_MS) return;
+
+  let changed = false;
   selectedSchedule.forEach((locId) => {
     const loc = LOCATIONS.find((l) => l.id === locId);
     if (!loc) return;
 
     const stayStamp = loc.stamps.find((s) => s.type === "stay");
-    if (unlockedStamps.includes(stayStamp.id)) return; // Đã nhận mộc 30p rồi thì bỏ qua
+    if (unlockedStamps.includes(stayStamp.id)) return;
 
-    const dist = calculateDistance(
-      userLocation.lat,
-      userLocation.lng,
-      loc.lat,
-      loc.lng,
-    );
+    if (isInsideGeofence(loc)) {
+      stayTimers[locId] = (stayTimers[locId] || 0) + elapsedSeconds;
+      changed = true;
 
-    // Nếu người dùng đang ở trong bán kính 100m của địa điểm
-    if (dist <= 100) {
-      stayTimers[locId] = (stayTimers[locId] || 0) + 1;
-
-      // Đủ 30 phút = 1800 giây
-      if (stayTimers[locId] >= 1800) {
+      if (stayTimers[locId] >= STAY_REQUIRED_SECONDS) {
         unlockStamp(
           stayStamp.id,
           `🏆 Chúc mừng! Bạn đã ở lại ${loc.name} đủ 30 phút và nhận ${stayStamp.name}.`,
@@ -240,7 +354,16 @@ function processStayTimers() {
     }
   });
 
+  if (changed) {
+    try {
+      localStorage.setItem("phoHienStayTimers", JSON.stringify(stayTimers));
+    } catch (err) {
+      console.error("Không lưu được bộ đếm:", err);
+    }
+  }
+
   renderQuestList();
+  updateLiveDistance();
 }
 
 function unlockStamp(stampId, message) {
@@ -250,20 +373,10 @@ function unlockStamp(stampId, message) {
     showToastNotification(message);
     renderStampsInventory();
     renderQuestList();
+    if (document.getElementById("tabItinerary")?.classList.contains("active")) {
+      renderItineraryPage();
+    }
   }
-}
-
-function calculateDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371e3;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function showToastNotification(message) {
@@ -346,6 +459,7 @@ function renderPOICards() {
         <h4>${loc.name}</h4>
         <p>${loc.desc}</p>
         <span class="poi-tag">2 Nhiệm vụ mộc</span>
+        <span class="poi-tag">${loc.ticket}</span>
       </div>
     </div>
   `,
@@ -371,8 +485,23 @@ function confirmAndStartItinerary() {
 }
 
 // =========================================================================
-// PHẦN 4: LỊCH TRÌNH & CHI TIẾT NHIỆM VỤ MODAL
+// PHẦN 4: LỊCH TRÌNH & CHI TIẾT NHIỆM VỤ
 // =========================================================================
+
+function liveDistanceText(loc) {
+  const d = distanceToLocation(loc);
+  if (d === null) return "Đang chờ GPS";
+  return `${formatDistance(d)}${d <= GEOFENCE_RADIUS_M ? " (đã trong vùng nhận mộc)" : ""}`;
+}
+
+function updateLiveDistance() {
+  const el = document.getElementById("liveDistance");
+  if (!el || selectedSchedule.length === 0) return;
+  const loc = LOCATIONS.find(
+    (l) => l.id === selectedSchedule[currentItineraryIndex],
+  );
+  if (loc) el.innerText = liveDistanceText(loc);
+}
 
 function renderItineraryPage() {
   const container = document.getElementById("itineraryDetailContainer");
@@ -396,6 +525,28 @@ function renderItineraryPage() {
     ? `<img src="${imgUrl}" alt="${locData.name}" class="itinerary-img anim-fade-up anim-delay-2" onerror="this.style.display='none'" />`
     : "";
 
+  // Khoảng cách từ chặng trước
+  let legHTML = "";
+  if (currentItineraryIndex > 0) {
+    const prev = LOCATIONS.find(
+      (l) => l.id === selectedSchedule[currentItineraryIndex - 1],
+    );
+    const legDist = calculateDistance(
+      prev.lat,
+      prev.lng,
+      locData.lat,
+      locData.lng,
+    );
+    legHTML = `<div class="info-row"><span class="info-label">🚗 Từ ${prev.name}</span><span class="info-value">${formatDistance(legDist)} theo đường chim bay</span></div>`;
+  }
+
+  const stampStatus = locData.stamps
+    .map((s) => {
+      const done = unlockedStamps.includes(s.id);
+      return `<li>${done ? "✅" : "🔒"} ${s.name}</li>`;
+    })
+    .join("");
+
   container.innerHTML = `
     <div class="itinerary-card">
       <div class="anim-fade-up" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
@@ -408,10 +559,37 @@ function renderItineraryPage() {
 
       <h3 class="anim-fade-up anim-delay-1" style="font-size: 1.2rem; color: #2c1d11;">${locData.name}</h3>
       <p class="sub-text anim-fade-up anim-delay-1">${locData.desc}</p>
-      
+
       ${imageHTML}
 
       <p class="anim-fade-up anim-delay-3" style="margin-top: 10px; line-height: 1.5; font-size: 0.9rem; color: #444;">${locData.detail}</p>
+
+      <div class="info-grid anim-fade-up anim-delay-3">
+        <div class="info-row"><span class="info-label">📍 Cách bạn</span><span class="info-value" id="liveDistance">${liveDistanceText(locData)}</span></div>
+        ${legHTML}
+        <div class="info-row"><span class="info-label">🏠 Địa chỉ</span><span class="info-value">${locData.address}</span></div>
+        <div class="info-row"><span class="info-label">🕒 Giờ mở cửa</span><span class="info-value">${locData.hours}</span></div>
+        <div class="info-row"><span class="info-label">🎟️ Vé vào cổng</span><span class="info-value">${locData.ticket}</span></div>
+        <div class="info-row"><span class="info-label">⏱️ Tham quan</span><span class="info-value">${locData.duration}</span></div>
+        <div class="info-row"><span class="info-label">🌤️ Nên đi lúc</span><span class="info-value">${locData.bestTime}</span></div>
+      </div>
+
+      <div class="info-section anim-fade-up anim-delay-3">
+        <h4>✨ Điểm nổi bật</h4>
+        <ul>${locData.highlights.map((h) => `<li>${h}</li>`).join("")}</ul>
+      </div>
+
+      <div class="info-section anim-fade-up anim-delay-3">
+        <h4>💡 Lưu ý khi tham quan</h4>
+        <ul>${locData.tips.map((t) => `<li>${t}</li>`).join("")}</ul>
+      </div>
+
+      <div class="info-section anim-fade-up anim-delay-3">
+        <h4>🏵️ Mộc tại địa danh</h4>
+        <ul class="stamp-status-list">${stampStatus}</ul>
+      </div>
+
+      <p class="sub-text" style="margin-top: 8px; font-size: 0.75rem;">Thông tin mang tính tham khảo, có thể thay đổi theo thực tế.</p>
 
       <div class="anim-fade-up anim-delay-3" style="margin-top: 15px;">
         <button class="btn-start-itinerary" onclick="openGoogleMaps(${locData.lat}, ${locData.lng})">
@@ -464,43 +642,36 @@ function renderQuestList() {
     .map((locId, idx) => {
       const loc = LOCATIONS.find((l) => l.id === locId);
 
-      // Check-in Quest
       const checkinStamp = loc.stamps.find((s) => s.type === "checkin");
       const isCheckinDone = unlockedStamps.includes(checkinStamp.id);
 
-      // Stay 30m Quest
       const stayStamp = loc.stamps.find((s) => s.type === "stay");
       const isStayDone = unlockedStamps.includes(stayStamp.id);
-      const staySeconds = stayTimers[locId] || 0;
-      const stayMinutesLeft = Math.max(0, Math.ceil((1800 - staySeconds) / 60));
+      const staySeconds = Math.min(
+        stayTimers[locId] || 0,
+        STAY_REQUIRED_SECONDS,
+      );
+      const stayMinutesLeft = Math.max(
+        0,
+        Math.ceil((STAY_REQUIRED_SECONDS - staySeconds) / 60),
+      );
 
-      let distText = "Đang tính vị trí...";
-      if (userLocation) {
-        const d = Math.round(
-          calculateDistance(
-            userLocation.lat,
-            userLocation.lng,
-            loc.lat,
-            loc.lng,
-          ),
-        );
-        distText = `Cách bạn: ${d}m`;
-      }
+      const d = distanceToLocation(loc);
+      const distText =
+        d === null ? "Đang tính vị trí..." : `Cách bạn: ${formatDistance(d)}`;
 
       return `
       <div style="border-bottom: 1px solid #eee; padding-bottom: 8px; margin-bottom: 8px;">
         <div style="font-weight: bold; font-size: 0.95rem;">Chặng ${idx + 1}: ${loc.name} (${distText})</div>
-        
-        <!-- NV 1: Đến nơi -->
+
         <div class="quest-item ${isCheckinDone ? "completed" : ""}" style="margin-top: 5px;">
           <span class="quest-status-icon">${isCheckinDone ? "✅" : "📍"}</span>
           <div>
             <div class="quest-title">1. Đến vị trí ${loc.name}</div>
-            <div class="quest-dist">${isCheckinDone ? "Đã nhận mộc 1" : "Đến gần <=100m để mở mộc"}</div>
+            <div class="quest-dist">${isCheckinDone ? "Đã nhận mộc 1" : `Đến gần ${GEOFENCE_RADIUS_M}m để mở mộc`}</div>
           </div>
         </div>
 
-        <!-- NV 2: Ở lại 30 phút -->
         <div class="quest-item ${isStayDone ? "completed" : ""}" style="margin-top: 5px;">
           <span class="quest-status-icon">${isStayDone ? "✅" : "⏳"}</span>
           <div>
@@ -515,7 +686,7 @@ function renderQuestList() {
 }
 
 // =========================================================================
-// PHẦN 5: KHUNG ẢNH & CANVAS MỘC HÌNH ẢNH (DỒN TỰ DO)
+// PHẦN 5: KHUNG ẢNH & CANVAS MỘC
 // =========================================================================
 
 function switchTab(tabId, btn) {
@@ -568,11 +739,10 @@ function toggleStampToCanvas(stampId) {
   if (index !== -1) {
     placedStamps.splice(index, 1);
   } else {
-    const imgObj = loadedStampImages[stampId];
     placedStamps.push({
       id: Date.now(),
       stampId: stampId,
-      img: imgObj,
+      img: loadedStampImages[stampId],
       x: canvas.width / 2 + (Math.random() * 40 - 20),
       y: canvas.height / 2 + (Math.random() * 40 - 20),
       size: 80,
@@ -585,7 +755,6 @@ function toggleStampToCanvas(stampId) {
 function drawCanvas() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Khung ảnh nền
   const frameX = 50,
     frameY = 50,
     frameW = 400,
@@ -594,7 +763,6 @@ function drawCanvas() {
   ctx.strokeStyle = "#8b2323";
   ctx.strokeRect(frameX, frameY, frameW, frameH);
 
-  // Thanh tiêu đề dưới khung
   ctx.fillStyle = "#8b2323";
   ctx.fillRect(frameX, frameY + frameH - 45, frameW, 45);
 
@@ -607,7 +775,6 @@ function drawCanvas() {
     frameY + frameH - 17,
   );
 
-  // Vẽ các file mộc PNG được kéo thả tự do
   placedStamps.forEach((stamp) => {
     if (stamp.img && stamp.img.complete) {
       ctx.drawImage(
@@ -618,7 +785,6 @@ function drawCanvas() {
         stamp.size,
       );
     } else {
-      // Nếu hình ảnh chưa kịp nạp xong thì vẽ hình tròn dự phòng
       ctx.beginPath();
       ctx.arc(stamp.x, stamp.y, stamp.size / 2, 0, 2 * Math.PI);
       ctx.fillStyle = "#8b2323";
@@ -628,7 +794,7 @@ function drawCanvas() {
 }
 
 // =========================================================================
-// PHẦN 6: KÉO THẢ TỰ DO MỘC HÌNH ẢNH
+// PHẦN 6: KÉO THẢ MỘC
 // =========================================================================
 
 function initCanvasInteraction() {
@@ -688,4 +854,3 @@ function downloadExportImage() {
   link.href = canvas.toDataURL("image/png");
   link.click();
 }
-
