@@ -176,13 +176,19 @@ function injectInfoStyles() {
 
 function injectContactFooter() {
   if (document.getElementById("contactFooter")) return;
-  const footer = document.createElement("footer");
+  const nav = document.querySelector(".bottom-nav");
+  if (!nav) return;
+
+  // Cho thanh nav xuống dòng để footer nằm dưới 3 mục
+  nav.style.flexWrap = "wrap";
+
+  const footer = document.createElement("div");
   footer.id = "contactFooter";
   footer.style.cssText =
-    "text-align:center;font-size:0.8rem;color:#6b5a4a;padding:16px 12px 96px;line-height:1.5;";
+    "flex:0 0 100%;width:100%;text-align:center;font-size:0.72rem;color:#9fb0bd;padding:4px 8px 8px;line-height:1.4;border-top:1px solid rgba(255,255,255,0.08);";
   footer.innerHTML =
-    '📧 Liên hệ góp ý, báo lỗi: <a href="mailto:navis7950@gmail.com" style="color:#8b2323;font-weight:700;text-decoration:none;">navis7950@gmail.com</a>';
-  document.body.appendChild(footer);
+    '📧 Liên hệ góp ý, báo lỗi: <a href="mailto:navis7950@gmail.com" style="color:#f0c14b;font-weight:700;text-decoration:none;">navis7950@gmail.com</a>';
+  nav.appendChild(footer);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -577,7 +583,6 @@ function renderItineraryPage() {
       <p class="anim-fade-up anim-delay-3" style="margin-top: 10px; line-height: 1.5; font-size: 0.9rem; color: #444;">${locData.detail}</p>
 
       <div class="info-grid anim-fade-up anim-delay-3">
-        <div class="info-row"><span class="info-label">📍 Cách bạn</span><span class="info-value" id="liveDistance">${liveDistanceText(locData)}</span></div>
         ${legHTML}
         <div class="info-row"><span class="info-label">🏠 Địa chỉ</span><span class="info-value">${locData.address}</span></div>
         <div class="info-row"><span class="info-label">🕒 Giờ mở cửa</span><span class="info-value">${locData.hours}</span></div>
