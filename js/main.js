@@ -42,8 +42,18 @@ const LOCATIONS = [
     lat: 20.644433786625353,
     lng: 106.05440926370912,
     stamps: [
-      { id: "dm1", name: "Mộc Đền Mẫu - Khám Phá", file: "images/dm1.png", type: "checkin" },
-      { id: "dm2", name: "Mộc Đền Mẫu - Trải Nghiệm 30P", file: "images/dm2.png", type: "stay" },
+      {
+        id: "dm1",
+        name: "Mộc Đền Mẫu - Khám Phá",
+        file: "images/dm1.png",
+        type: "checkin",
+      },
+      {
+        id: "dm2",
+        name: "Mộc Đền Mẫu - Trải Nghiệm 30P",
+        file: "images/dm2.png",
+        type: "stay",
+      },
     ],
   },
   {
@@ -69,8 +79,18 @@ const LOCATIONS = [
     lat: 20.655011955225113,
     lng: 106.05026360111725,
     stamps: [
-      { id: "cc1", name: "Mộc Chùa Chuông - Khám Phá", file: "images/cc1.png", type: "checkin" },
-      { id: "cc2", name: "Mộc Chùa Chuông - Trải Nghiệm 30P", file: "images/cc2.png", type: "stay" },
+      {
+        id: "cc1",
+        name: "Mộc Chùa Chuông - Khám Phá",
+        file: "images/cc1.png",
+        type: "checkin",
+      },
+      {
+        id: "cc2",
+        name: "Mộc Chùa Chuông - Trải Nghiệm 30P",
+        file: "images/cc2.png",
+        type: "stay",
+      },
     ],
   },
   {
@@ -96,8 +116,18 @@ const LOCATIONS = [
     lat: 20.6623247752404,
     lng: 106.04916656478785,
     stamps: [
-      { id: "vm1", name: "Mộc Văn Miếu - Khám Phá", file: "images/vm1.png", type: "checkin" },
-      { id: "vm2", name: "Mộc Văn Miếu - Trải Nghiệm 30P", file: "images/vm2.png", type: "stay" },
+      {
+        id: "vm1",
+        name: "Mộc Văn Miếu - Khám Phá",
+        file: "images/vm1.png",
+        type: "checkin",
+      },
+      {
+        id: "vm2",
+        name: "Mộc Văn Miếu - Trải Nghiệm 30P",
+        file: "images/vm2.png",
+        type: "stay",
+      },
     ],
   },
 ];
@@ -234,7 +264,9 @@ function startWatchingGPS() {
   gpsWatchId = navigator.geolocation.watchPosition(
     (pos) => {
       setUserLocation(pos);
-      updateGPSStatus(`📡 GPS: Đã kết nối (sai số ±${Math.round(userLocation.accuracy)}m)`);
+      updateGPSStatus(
+        `📡 GPS: Đã kết nối (sai số ±${Math.round(userLocation.accuracy)}m)`,
+      );
       checkAutomaticQuests();
       updateLiveDistance();
     },
@@ -256,7 +288,8 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
   const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(Math.min(1, a)), Math.sqrt(Math.max(0, 1 - a)));
+  const c =
+    2 * Math.atan2(Math.sqrt(Math.min(1, a)), Math.sqrt(Math.max(0, 1 - a)));
   return EARTH_RADIUS_M * c;
 }
 
@@ -267,7 +300,12 @@ function formatDistance(meters) {
 
 function distanceToLocation(loc) {
   if (!userLocation) return null;
-  return calculateDistance(userLocation.lat, userLocation.lng, loc.lat, loc.lng);
+  return calculateDistance(
+    userLocation.lat,
+    userLocation.lng,
+    loc.lat,
+    loc.lng,
+  );
 }
 
 // Có đang trong vùng nhận mộc không, có tính dung sai theo sai số GPS
@@ -471,7 +509,9 @@ function liveDistanceText(loc) {
 function updateLiveDistance() {
   const el = document.getElementById("liveDistance");
   if (!el || selectedSchedule.length === 0) return;
-  const loc = LOCATIONS.find((l) => l.id === selectedSchedule[currentItineraryIndex]);
+  const loc = LOCATIONS.find(
+    (l) => l.id === selectedSchedule[currentItineraryIndex],
+  );
   if (loc) el.innerText = liveDistanceText(loc);
 }
 
@@ -500,8 +540,15 @@ function renderItineraryPage() {
   // Khoảng cách từ chặng trước
   let legHTML = "";
   if (currentItineraryIndex > 0) {
-    const prev = LOCATIONS.find((l) => l.id === selectedSchedule[currentItineraryIndex - 1]);
-    const legDist = calculateDistance(prev.lat, prev.lng, locData.lat, locData.lng);
+    const prev = LOCATIONS.find(
+      (l) => l.id === selectedSchedule[currentItineraryIndex - 1],
+    );
+    const legDist = calculateDistance(
+      prev.lat,
+      prev.lng,
+      locData.lat,
+      locData.lng,
+    );
     legHTML = `<div class="info-row"><span class="info-label">🚗 Từ ${prev.name}</span><span class="info-value">${formatDistance(legDist)} theo đường chim bay</span></div>`;
   }
 
@@ -612,11 +659,18 @@ function renderQuestList() {
 
       const stayStamp = loc.stamps.find((s) => s.type === "stay");
       const isStayDone = unlockedStamps.includes(stayStamp.id);
-      const staySeconds = Math.min(stayTimers[locId] || 0, STAY_REQUIRED_SECONDS);
-      const stayMinutesLeft = Math.max(0, Math.ceil((STAY_REQUIRED_SECONDS - staySeconds) / 60));
+      const staySeconds = Math.min(
+        stayTimers[locId] || 0,
+        STAY_REQUIRED_SECONDS,
+      );
+      const stayMinutesLeft = Math.max(
+        0,
+        Math.ceil((STAY_REQUIRED_SECONDS - staySeconds) / 60),
+      );
 
       const d = distanceToLocation(loc);
-      const distText = d === null ? "Đang tính vị trí..." : `Cách bạn: ${formatDistance(d)}`;
+      const distText =
+        d === null ? "Đang tính vị trí..." : `Cách bạn: ${formatDistance(d)}`;
 
       return `
       <div style="border-bottom: 1px solid #eee; padding-bottom: 8px; margin-bottom: 8px;">
